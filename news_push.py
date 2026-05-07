@@ -7,7 +7,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # ===================== 小白可修改配置区 =====================
 FEISHU_WEBHOOK = os.getenv("FEISHU_WEBHOOK")
-NEWS_COUNT = 8  # 每天推送的新闻条数
+NEWS_COUNT = 10  # 每天推送的新闻条数
 # ==============================================================
 
 # 【精选】AI/科技/投资/创业领域权威RSS源
