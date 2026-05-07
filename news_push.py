@@ -1,38 +1,44 @@
 import requests
 import os
 from datetime import datetime, timedelta
+# 下面这行是用来跳过SSL警告的，不用管
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # 从GitHub后台获取你的飞书webhook地址（不用改）
 FEISHU_WEBHOOK = os.getenv("FEISHU_WEBHOOK")
-# 每天推送几条新闻（默认10条，想改就改数字）
+# 每天推送几条新闻（默认10条）
 NEWS_COUNT = 10
 
-# 【重点】3个备用新闻源API，自动切换，哪个能用用哪个
-# 格式：(API地址, 解析函数名)
+# 【全新升级】2个超稳定新闻源，第一个不行自动用第二个
 NEWS_API_LIST = [
-    # 备用1：今日头条热榜（稳定优先）
-    ("https://api.oioweb.cn/api/hotlist/toutiao", "parse_oioweb"),
-    # 备用2：百度热搜
-    ("https://api.oioweb.cn/api/hotlist/baidu", "parse_oioweb"),
-    # 备用3：微博热搜
-    ("https://api.oioweb.cn/api/hotlist/weibo", "parse_oioweb"),
+    # 源1：免费公开API（带跳过SSL补丁）
+    ("https://api.vvhan.com/api/hotlist?type=toutiao", "parse_vvhan", True),
+    # 源2：备用免费API
+    ("https://api.oioweb.cn/api/hotlist/toutiao", "parse_oioweb", True),
 ]
 
-# 解析备用API的新闻数据（不用懂，直接用）
+# 解析源1的数据
+def parse_vvhan(data):
+    if data.get("success") and "data" in data:
+        return [{"title": item["title"], "url": item["url"]} for item in data["data"][:NEWS_COUNT]]
+    return []
+
+# 解析源2的数据
 def parse_oioweb(data):
     if data.get("code") == 200 and "data" in data:
         return [{"title": item["title"], "url": item["url"]} for item in data["data"][:NEWS_COUNT]]
     return []
 
-# 循环尝试所有新闻源，直到成功获取
+# 循环尝试所有新闻源
 def get_daily_news():
-    for api_url, parse_func_name in NEWS_API_LIST:
+    for api_url, parse_func_name, skip_ssl in NEWS_API_LIST:
         try:
             print(f"正在尝试新闻源：{api_url}")
-            res = requests.get(api_url, timeout=15)
+            # 【关键修改】根据配置决定是否跳过SSL验证
+            res = requests.get(api_url, timeout=15, verify=not skip_ssl)
             res.raise_for_status()
             data = res.json()
-            # 调用对应的解析函数
             parse_func = locals()[parse_func_name]
             news_list = parse_func(data)
             if news_list:
@@ -44,9 +50,8 @@ def get_daily_news():
     print("所有新闻源都失败了")
     return []
 
-# 把新闻整理成飞书能看懂的格式（不用懂，直接用）
+# 整理新闻格式
 def format_news_content(news_list):
-    # 把GitHub的UTC时间转换成北京时间
     beijing_time = datetime.utcnow() + timedelta(hours=8)
     today = beijing_time.strftime("%Y年%m月%d日")
     content = f"# 每日热点新闻 | {today}\n---\n"
@@ -55,7 +60,7 @@ def format_news_content(news_list):
     content += f"---\n推送时间：{beijing_time.strftime('%H:%M')}"
     return content
 
-# 推送到飞书（不用懂，直接用）
+# 推送到飞书
 def send_feishu_msg(content):
     headers = {"Content-Type": "application/json"}
     payload = {"msg_type": "markdown", "content": {"markdown": content}}
@@ -66,7 +71,7 @@ def send_feishu_msg(content):
     except Exception as e:
         print(f"推送失败：{e}")
 
-# 主程序（不用懂，直接用）
+# 主程序
 if __name__ == "__main__":
     news = get_daily_news()
     if not news:
