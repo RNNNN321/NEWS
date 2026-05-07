@@ -1,7 +1,7 @@
 name: 每日新闻推送
 on:
   schedule:
-    - cron: '0 0 * * *'
+    - cron: '0 2 * * 1-5'
   workflow_dispatch:
 
 jobs:
