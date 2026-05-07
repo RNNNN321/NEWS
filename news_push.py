@@ -5,87 +5,64 @@ from datetime import datetime, timedelta
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# ===================== 配置区 =====================
+# 核心配置（不用改）
 FEISHU_WEBHOOK = os.getenv("FEISHU_WEBHOOK")
-NEWS_COUNT = 10
-# ==================================================
+NEWS_COUNT = 5
 
-# 【直接使用RSS源，不依赖第三方API】
+# 稳定国际新闻RSS源
 NEWS_SOURCE_LIST = [
-    {
-        "name": "BBC世界新闻",
-        "rss_url": "https://feeds.bbci.co.uk/news/world/rss.xml"
-    },
-    {
-        "name": "CNN国际新闻",
-        "rss_url": "https://rss.cnn.com/rss/cnn_world.rss"
-    },
-    {
-        "name": "美联社国际新闻",
-        "rss_url": "https://apnews.com/rss/apf-topnews"
-    }
+    {"name": "BBC世界新闻", "rss_url": "https://feeds.bbci.co.uk/news/world/rss.xml"},
+    {"name": "CNN国际新闻", "rss_url": "https://rss.cnn.com/rss/cnn_world.rss"}
 ]
 
-# 直接解析RSS源
-def get_news_from_rss(rss_url):
-    try:
-        print(f"正在解析RSS源：{rss_url}")
-        # 使用feedparser直接解析
-        feed = feedparser.parse(rss_url)
-        if feed.bozo == 0:  # bozo=0表示解析成功
-            news_list = []
-            for entry in feed.entries[:NEWS_COUNT]:
-                news_list.append({
-                    "title": entry.title,
-                    "url": entry.link
-                })
-            return news_list
-        else:
-            print(f"RSS解析错误：{feed.bozo_exception}")
-            return None
-    except Exception as e:
-        print(f"RSS源访问失败：{e}")
-        return None
-
-# 循环尝试所有新闻源
+# 解析新闻数据
 def get_international_news():
     for source in NEWS_SOURCE_LIST:
         try:
-            print(f"正在尝试新闻源：{source['name']}")
-            news_list = get_news_from_rss(source["rss_url"])
-            if news_list:
-                print(f"✅ 成功从【{source['name']}】获取新闻")
-                return news_list, source['name']
+            feed = feedparser.parse(source["rss_url"])
+            if feed.bozo == 0:
+                news_list = [
+                    {"title": entry.title, "url": entry.link} 
+                    for entry in feed.entries[:NEWS_COUNT]
+                ]
+                return news_list, source["name"]
         except Exception as e:
-            print(f"❌ 新闻源【{source['name']}】失败：{e}")
+            print(f"新闻源【{source['name']}】获取失败：{e}")
             continue
     return [], None
 
-# 格式化新闻内容
+# 【关键修改1】内容开头强制带「新闻」关键词，100%命中校验
+# 【关键修改2】放弃markdown，改用纯文本，彻底解决飞书格式兼容问题
 def format_news_content(news_list, source_name):
     beijing_time = datetime.utcnow() + timedelta(hours=8)
-    today = beijing_time.strftime("%Y年%m月%d日")
-    content = f"# 每日国际新闻 | {today}\n📰 新闻来源：{source_name}\n---\n"
+    # 第一句就带「新闻」，飞书关键词校验必过
+    content = f"新闻推送 | 每日国际新闻 {beijing_time.strftime('%Y年%m月%d日')}\n"
+    content += f"📰 新闻来源：{source_name}\n"
+    content += "------------------------\n"
     for idx, news in enumerate(news_list, 1):
-        content += f"{idx}. [{news['title']}]({news['url']})\n\n"
-    content += f"---\n推送时间：北京时间 {beijing_time.strftime('%H:%M')}"
+        content += f"{idx}. {news['title']}\n链接：{news['url']}\n\n"
+    content += f"推送时间：北京时间 {beijing_time.strftime('%H:%M')}"
     return content
 
 # 推送到飞书
 def send_to_feishu(content):
     headers = {"Content-Type": "application/json"}
-    payload = {"msg_type": "markdown", "content": {"markdown": content}}
+    # 【关键修改3】用纯文本格式发送，飞书100%兼容
+    payload = {"msg_type": "text", "content": {"text": content}}
     try:
         res = requests.post(FEISHU_WEBHOOK, json=payload, headers=headers, timeout=15)
         res.raise_for_status()
         print("✅ 飞书推送成功！")
+        # 日志里打印内容预览，确认关键词确实在推送内容里
+        print(f"推送内容预览：{content[:100]}")
     except Exception as e:
         print(f"❌ 飞书推送失败：{e}")
 
+# 主程序
 if __name__ == "__main__":
     news_list, source_name = get_international_news()
     if not news_list:
-        send_to_feishu("【每日国际新闻】今日热点获取失败，请稍后手动查看")
+        send_to_feishu("新闻推送：今日国际新闻获取失败，请稍后手动查看")
     else:
         final_content = format_news_content(news_list, source_name)
         send_to_feishu(final_content)
