@@ -1,7 +1,10 @@
 name: 每日新闻推送
 on:
   schedule:
-    - cron: '* * * * *'
+    # 【激活测试用】每5分钟触发一次，看到schedule记录后，注释掉这行
+    - cron: '*/5 * * * *'
+    # 【正式用】周一到周五 北京时间10:00 自动推送，激活成功后再取消注释
+    # - cron: '0 2 * * 1-5'
   workflow_dispatch:
 
 jobs:
@@ -10,13 +13,13 @@ jobs:
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
-      - name: 检出代码
-        uses: actions/checkout@v4
-      - name: 配置Python环境
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+        name: 检出代码
+      - uses: actions/setup-python@v5
+        name: 配置Python环境
         with:
-          python-version: '3.9'
-      - name: 安装必要工具（新增feedparser）
+          python-version: '3.11'
+      - name: 安装依赖
         run: pip install requests feedparser
       - name: 执行新闻推送
         run: python news_push.py
